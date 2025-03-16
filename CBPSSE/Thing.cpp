@@ -51,7 +51,16 @@ Thing::Thing(NiAVObject* obj, BSFixedString& name, Actor* actor)
     auto firstWorldPos = skeletonObj->m_worldTransform.rot * obj->m_worldTransform.pos;
     auto firstSkeletonPos = skeletonObj->m_worldTransform.rot * skeletonObj->m_worldTransform.pos;
 
-    rightSide = (firstWorldPos.x - firstSkeletonPos.x) >= 0.0;
+
+    // TODO: somtimes wrong??
+    // rightSide = (firstWorldPos.x - firstSkeletonPos.x) >= 0.0; 
+
+    if (strstr(boneName.c_str(), "CBP_R"))
+      rightSide = 1;
+    else if (strstr(boneName.c_str(), "CBP_L"))
+      rightSide = 0;
+    else
+      rightSide = -1;
 
     // Set initial positions
     oldWorldPos = obj->m_worldTransform.pos;
@@ -65,6 +74,28 @@ Thing::Thing(NiAVObject* obj, BSFixedString& name, Actor* actor)
     time = clock();
 
     IsBreastBone = ContainsNoCase(std::string(boneName.c_str()), "Breast");
+
+    BSFixedString chest_str("Chest");
+    chestObj = actor->unkF0->rootNode->GetObjectByName(&chest_str);
+
+    BSFixedString head_str("HEAD");
+    headObj = actor->unkF0->rootNode->GetObjectByName(&head_str);
+
+    //TODO:
+    BSFixedString shoulderL_str("LArm_ShoulderFat_skin");
+    BSFixedString shoulderR_str("RArm_ShoulderFat_skin");
+    shoulderL = actor->unkF0->rootNode->GetObjectByName(&shoulderL_str);
+    shoulderR = actor->unkF0->rootNode->GetObjectByName(&shoulderR_str);
+
+    shoulderDist = sqrt(pow(shoulderL->m_worldTransform.pos.x - shoulderR->m_worldTransform.pos.x, 2) +
+                    pow(shoulderL->m_worldTransform.pos.y - shoulderR->m_worldTransform.pos.y, 2) +
+                    pow(shoulderL->m_worldTransform.pos.z - shoulderR->m_worldTransform.pos.z, 2));
+
+    chestHeadDist = sqrt(pow(chestObj->m_worldTransform.pos.x - headObj->m_worldTransform.pos.x, 2) +
+                    pow(chestObj->m_worldTransform.pos.y - headObj->m_worldTransform.pos.y, 2) +
+                    pow(chestObj->m_worldTransform.pos.z - headObj->m_worldTransform.pos.z, 2));
+
+    IsBreast2 = (ContainsNoCase(std::string(boneName.c_str()), "Breast_CBP_L_02") || ContainsNoCase(std::string(boneName.c_str()), "Breast_CBP_R_02"));
 }
 
 Thing::~Thing()
@@ -73,35 +104,107 @@ Thing::~Thing()
 
 NiPoint3 Thing::CalculateGravitySupine(Actor* actor)
 {
-    NiPoint3 varGravitySupine = NiPoint3(0.0, 0.0, 0.0);
+  NiPoint3 varGravitySupine = NiPoint3(0.0, 0.0, 0.0);
 
-    if (!IsBreastBone) //other bones don't need to edited gravity by SPINE2 obj
-    {
-        //other nodes are based on parent obj
-        varGravitySupine = NiPoint3(0.0, 0.0, 0.0);
-        return varGravitySupine;
-    }
-
-    //Get the reference bone to know which way the breasts are orientated
-    //thing_ReadNode_lock.lock();
-    BSFixedString chest_str("Chest");
-
-    NiAVObject* breastGravityReferenceBone = actor->unkF0->rootNode->GetObjectByName(&chest_str);
-
-    //thing_ReadNode_lock.unlock();
-
-    float gravityRatio = 0.0f;
-    if (breastGravityReferenceBone != nullptr)
-    {
-        //auto breastRot = breastGravityReferenceBone->m_worldTransform.rot;
-        //Get the orientation (here the Z element of the rotation matrix (approx 1.0 when standing up, approx -1.0 when upside down))
-        auto chestOrientation = breastGravityReferenceBone->m_worldTransform.rot.data[1][2];
-        gravityRatio = chestOrientation >= 0.0 ? chestOrientation : 0.0;
-    }
-
-    varGravitySupine = NiPoint3(gravitySupineX, gravitySupineY, gravitySupineZ) * gravityRatio;
-
+  if (!IsBreastBone) //other bones don't need to edited gravity by SPINE2 obj
+  {
+    //other nodes are based on parent obj
+    varGravitySupine = NiPoint3(0.0, 0.0, 0.0);
     return varGravitySupine;
+  }
+
+  //Get the reference bone to know which way the breasts are orientated
+  //thing_ReadNode_lock.lock();
+
+  NiAVObject* breastGravityReferenceBone = chestObj;
+
+  //thing_ReadNode_lock.unlock();
+  if (breastGravityReferenceBone != nullptr)
+  {
+    //auto breastRot = breastGravityReferenceBone->m_worldTransform.rot;
+    //Get the orientation (here the Z element of the rotation matrix (approx 1.0 when standing up, approx -1.0 when upside down))
+
+    // chestOrientation: looks like cosine value in pre-NG?. hard to differentiate character is hanged upside down or standing normal. AND when character is lying left or right, this value gets no sense.
+    // BUT useful for determining forward facedown/backward faceup lying
+    auto chestOrientation = breastGravityReferenceBone->m_worldTransform.rot.data[1][2];
+    auto& shulderLpos = shoulderL->m_worldTransform.pos;
+    auto& shulderRpos = shoulderR->m_worldTransform.pos;
+
+    auto& headPos = headObj->m_worldTransform.pos;
+    auto& chestPos = chestObj->m_worldTransform.pos;
+    auto chestHeadHeightDiff = headPos.z - chestPos.z;
+    auto standing = chestHeadHeightDiff / chestHeadDist; // 1: standing straight, 0: supine, -1: hanged upside down
+
+    // TODO: 실제와 반대로 나오는 경우가 있다
+    auto shoulderHeightDiff = shulderRpos.z - shulderLpos.z;
+    auto rolled = (fabs(shoulderHeightDiff) / shoulderDist);
+
+    {
+      // visualize in https://www.geogebra.org/graphing?lang=en
+#define INCR_Z(cfg, r) ((cfg) - 0.25*(cfg) * pow((r) + 1, 2))
+#define INCR_DECR_X(cfg, r) ((cfg) - (cfg) * (r) * (r))
+
+      varGravitySupine.z = INCR_Z(gravitySupineZ, standing);
+      if (chestOrientation < 0)
+      {
+        // FACE DOWN
+        varGravitySupine.x = 0;
+      }
+      else
+      {
+        // FACE UP
+        varGravitySupine.x = INCR_DECR_X(gravitySupineX, standing);
+      }
+#undef INCR_Z
+#undef INCR_DECR_X
+    }
+#if 1
+    if (shoulderHeightDiff > 0)
+    {
+      // right is up
+      if (rightSide == 1)
+      {
+        if (rolled > 0.05) // 3 in degree
+        {
+          varGravitySupine.x = varGravitySupine.x * (0.5f - rolled);
+        }
+      }
+    }
+    else {
+      // left is up
+      if (rightSide == 0)
+      {
+        if (rolled > 0.05)
+        {
+          varGravitySupine.x = varGravitySupine.x * (0.5f - rolled);
+        }
+      }
+    }
+#endif
+
+#if 1
+    if (actor->formID == logActor && gravitySupineZ)
+    {
+      logger.Error("%12s: Z=%8.4f, FD=%d, HU=%d, standing=%2.4f, sZ=%2.4f, sX=%2.4f, sY=%2.4f, sDist=%2.4f, sSIN=%2.4f, %s, %s, chDist=%2.4f, chSIN=%2.4f \n",
+        boneName.c_str(),
+        chestOrientation,
+        (chestOrientation < 0),
+        standing < 0.0,
+        standing,
+        varGravitySupine.z,
+        varGravitySupine.x,
+        varGravitySupine.y,
+        shoulderDist,
+        shoulderHeightDiff / shoulderDist,
+        (shoulderHeightDiff > 0) ? "R_up" : "L_up",
+        rightSide ? "R" : "L",
+        chestHeadDist,
+        chestHeadHeightDiff / chestHeadDist
+      );
+    }
+#endif
+  }
+  return varGravitySupine;
 }
 
 void Thing::StoreOriginalTransforms(Actor* actor)
@@ -230,6 +333,8 @@ void Thing::UpdateConfig(configEntry_t& centry)
 
     gravityBias = centry["gravityBias"];
     gravityCorrection = centry["gravityCorrection"];
+    gravityReal = centry["gravityReal"];
+
     cogOffsetY = centry["cogOffsetY"];
     cogOffsetX = centry["cogOffsetX"];
     cogOffsetZ = centry["cogOffsetZ"];
@@ -532,29 +637,34 @@ void Thing::UpdateThing(Actor* actor)
     // Store a copy of localDiff for later for transforming rotation motions
     auto rotDiff = localDiff;
 
-    auto varGravitySupine = CalculateGravitySupine(actor);
-
     // Transform localDiff to world coordinates
     localDiff = skeletonObj->m_localTransform.rot.Transpose() * localDiff;
-
-    auto newWorldPos = localDiff;
-
-    newWorldPos.x += varGravitySupine.x * linearX;
-    newWorldPos.y += varGravitySupine.y * linearY;
-    newWorldPos.z += varGravitySupine.z * linearZ;
 
     oldWorldPos = diff + target;
 
     // Create the rotated world space transformation matrix
-    NiMatrix43 rotatedInvWorldTrans = rotateLinear * newRotation.Transpose() * obj->m_parent->m_worldTransform.rot;
+    // NiMatrix43 rotatedInvWorldTrans = rotateLinear * newRotation.Transpose() * obj->m_parent->m_worldTransform.rot; // <== kyh 2025.03.16 newRotation.Transpose() cause supine x linear move in world z direction?
 
     // Transform localDiff to a settings-rotated local space
     //newWorldPos = rotatedInvWorldTrans * newWorldPos;
 
-    auto newLocalPos = origLocalPos[boneName.c_str()][actor->formID] + (rotatedInvWorldTrans * newWorldPos);
+    auto newLocalPos = origLocalPos[boneName.c_str()][actor->formID] + (rotateLinear * obj->m_parent->m_worldTransform.rot * localDiff);
+
+    // Apply gravitySupine
+    auto varGravitySupine = CalculateGravitySupine(actor);
+    if (IsBreast2)
+      newLocalPos += obj->m_parent->m_localTransform.rot * varGravitySupine; //XXX: Breast2 만 이상하게 동작( 아래처럼 하면 x linear 와 y linear가 뒤바뀜).
+    else
+      newLocalPos += chestObj->m_localTransform.rot * varGravitySupine;
 
     // Apply gravityCorrection, which will always point downward
     newLocalPos += rotateLinear * obj->m_parent->m_worldTransform.rot * skeletonObj->m_localTransform.rot.Transpose() * NiPoint3(0, 0, gravityCorrection * linearZ);
+
+    // Apply gravityReal, which will always point downward, downward means groundward
+    if (IsBreastBone)
+    {
+      newLocalPos += obj->m_parent->m_worldTransform.rot * NiPoint3(0, 0, gravityReal * -1);
+    }
 
     //if (ContainsNoCase(std::string(boneName.c_str()), "Breast_CBP_R_02") ||
     //    ContainsNoCase(std::string(boneName.c_str()), "Breast_CBP_L_02")
@@ -587,6 +697,13 @@ void Thing::UpdateThing(Actor* actor)
 #endif
 
     obj->m_localTransform.pos = newLocalPos;
+    
+    // Apply gravityRealRot
+    NiPoint3 realGravityRot(0, 0, 0);
+    if (IsBreastBone)
+    {
+      realGravityRot = obj->m_worldTransform.rot * NiPoint3(0, 0, gravityReal * -1);
+    }
 
     // Calculate rotational motion
     if (absRotX) rotDiff.x = fabs(rotDiff.x);
@@ -596,6 +713,9 @@ void Thing::UpdateThing(Actor* actor)
     rotDiff.y *= rotationalY;
     rotDiff.z *= rotationalZ;
 
+    realGravityRot.x *= rotationalX;
+    realGravityRot.y *= rotationalY;
+    realGravityRot.z *= rotationalZ;
 
 #if DEBUG
     logger.Error("localTransform.pos after: ");
@@ -615,6 +735,7 @@ void Thing::UpdateThing(Actor* actor)
     NiMatrix43 standardRot;
 
     rotDiff = rotateRotation * rotDiff;
+    rotDiff += rotateRotation * realGravityRot;
     standardRot.SetEulerAngles(rotDiff.x, rotDiff.y, rotDiff.z);
     // Calculate the new local rot as an offset from the original local rot
     obj->m_localTransform.rot = standardRot * origLocalRot[boneName.c_str()][actor->formID];

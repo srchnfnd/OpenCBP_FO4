@@ -4,16 +4,13 @@
 #pragma warning(disable : 4996)
 
 // TODO make better macro
-//#define LOG_ON
+#define LOG_ON
 
 CbpLogger::CbpLogger(const char* fname)
 {
 #ifdef LOG_ON
-    handle = fopen(fname, "a");
-    if (handle)
-    {
-        fprintf(handle, "CBP Log initialized\n");
-    }
+  filename = fname;
+  handle = NULL; 
 #endif
 }
 
@@ -42,6 +39,28 @@ void CbpLogger::Error(const char* fmt...)
         va_end(argptr);
         fflush(handle);
     }
+#endif
+}
+
+void CbpLogger::SetEnable(bool enable)
+{
+#ifdef LOG_ON
+  if (enable)
+  {
+    if (!handle)
+    {
+      handle = fopen(filename.c_str(), "w");
+      fprintf(handle, "CBP Log initialized\n");
+    }
+  }
+  else {
+    if (handle)
+    {
+      fprintf(handle, "CBP Log closing\n");
+      fclose(handle);
+      handle = NULL;
+    }
+  }
 #endif
 }
 

@@ -28,6 +28,7 @@ bool femaleOnly = false;
 bool maleOnly = false;
 bool npcOnly = false;
 bool useWhitelist = false;
+unsigned long logActor = 0;
 
 config_t config;
 concurrency::concurrent_unordered_map<UInt32, armorOverrideData> configArmorOverrideMap;
@@ -151,6 +152,15 @@ bool LoadConfig()
         (useWhitelist ^ useWhitelistOld);
 
     configReloadCount = configReader.GetInteger("Tuning", "rate", 0);
+
+    logActor = 0;
+    try {
+      auto logActorStr = configReader.Get("Tuning", "logActor", "");
+      logActor = std::stoul(logActorStr, nullptr, 16);
+    }
+    catch (const std::exception&) {}
+
+    logger.SetEnable(configReader.GetBoolean("Tuning", "logEnable", false));
 
     // Read sections
     auto & sections = configReader.Sections();

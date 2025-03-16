@@ -48,6 +48,7 @@ extern bool femaleOnly;
 extern bool maleOnly;
 extern bool npcOnly;
 extern bool useWhitelist;
+extern unsigned long logActor;
 
 extern int configReloadCount;
 extern config_t config;

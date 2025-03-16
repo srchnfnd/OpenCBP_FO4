@@ -45,6 +45,15 @@ class Thing
     bool rightSide;
     Actor* m_actor;
 
+    bool IsBreast2;
+    NiAVObject* headObj; 
+    NiAVObject* chestObj;
+    float shoulderDist;
+    float chestHeadDist;
+    NiAVObject* shoulderL;
+    NiAVObject* shoulderR;
+
+
 public:
     bool isEnabled;
 
@@ -60,6 +69,7 @@ public:
 
     float gravityBias = 0.0f;
     float gravityCorrection = 0.0f;
+    float gravityReal = 0.0f;
     float timeTick = 4.0f;
     float linearX = 0.0f;
     float linearY = 0.0f;
