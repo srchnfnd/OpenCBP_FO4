@@ -637,25 +637,26 @@ void Thing::UpdateThing(Actor* actor)
     // Store a copy of localDiff for later for transforming rotation motions
     auto rotDiff = localDiff;
 
+    auto varGravitySupine = CalculateGravitySupine(actor);
+
     // Transform localDiff to world coordinates
     localDiff = skeletonObj->m_localTransform.rot.Transpose() * localDiff;
+
+    auto newWorldPos = localDiff;
+
+    newWorldPos.x += varGravitySupine.x * linearX;
+    newWorldPos.y += varGravitySupine.y * linearY;
+    newWorldPos.z += varGravitySupine.z * linearZ;
 
     oldWorldPos = diff + target;
 
     // Create the rotated world space transformation matrix
-    // NiMatrix43 rotatedInvWorldTrans = rotateLinear * newRotation.Transpose() * obj->m_parent->m_worldTransform.rot; // <== kyh 2025.03.16 newRotation.Transpose() cause supine x linear move in world z direction?
+    NiMatrix43 rotatedInvWorldTrans = rotateLinear * newRotation.Transpose() * obj->m_parent->m_worldTransform.rot;
 
     // Transform localDiff to a settings-rotated local space
     //newWorldPos = rotatedInvWorldTrans * newWorldPos;
 
-    auto newLocalPos = origLocalPos[boneName.c_str()][actor->formID] + (rotateLinear * obj->m_parent->m_worldTransform.rot * localDiff);
-
-    // Apply gravitySupine
-    auto varGravitySupine = CalculateGravitySupine(actor);
-    if (IsBreast2)
-      newLocalPos += obj->m_parent->m_localTransform.rot * varGravitySupine; //XXX: Breast2 만 이상하게 동작( 아래처럼 하면 x linear 와 y linear가 뒤바뀜).
-    else
-      newLocalPos += chestObj->m_localTransform.rot * varGravitySupine;
+    auto newLocalPos = origLocalPos[boneName.c_str()][actor->formID] + (rotatedInvWorldTrans * newWorldPos);
 
     // Apply gravityCorrection, which will always point downward
     newLocalPos += rotateLinear * obj->m_parent->m_worldTransform.rot * skeletonObj->m_localTransform.rot.Transpose() * NiPoint3(0, 0, gravityCorrection * linearZ);
