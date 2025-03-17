@@ -81,7 +81,6 @@ Thing::Thing(NiAVObject* obj, BSFixedString& name, Actor* actor)
     BSFixedString head_str("HEAD");
     headObj = actor->unkF0->rootNode->GetObjectByName(&head_str);
 
-    //TODO:
     BSFixedString shoulderL_str("LArm_ShoulderFat_skin");
     BSFixedString shoulderR_str("RArm_ShoulderFat_skin");
     shoulderL = actor->unkF0->rootNode->GetObjectByName(&shoulderL_str);
@@ -135,7 +134,7 @@ NiPoint3 Thing::CalculateGravitySupine(Actor* actor)
     auto chestHeadHeightDiff = headPos.z - chestPos.z;
     auto standing = chestHeadHeightDiff / chestHeadDist; // 1: standing straight, 0: supine, -1: hanged upside down
 
-    // TODO: 실제와 반대로 나오는 경우가 있다
+    // TODO: at times inverted result...
     auto shoulderHeightDiff = shulderRpos.z - shulderLpos.z;
     auto rolled = (fabs(shoulderHeightDiff) / shoulderDist);
 
@@ -643,7 +642,7 @@ void Thing::UpdateThing(Actor* actor)
     oldWorldPos = diff + target;
 
     // Create the rotated world space transformation matrix
-    // NiMatrix43 rotatedInvWorldTrans = rotateLinear * newRotation.Transpose() * obj->m_parent->m_worldTransform.rot; // <== kyh 2025.03.16 newRotation.Transpose() cause supine x linear move in world z direction?
+    // NiMatrix43 rotatedInvWorldTrans = rotateLinear * newRotation.Transpose() * obj->m_parent->m_worldTransform.rot; // <== not very stable...
 
     // Transform localDiff to a settings-rotated local space
     //newWorldPos = rotatedInvWorldTrans * newWorldPos;
@@ -653,7 +652,7 @@ void Thing::UpdateThing(Actor* actor)
     // Apply gravitySupine
     auto varGravitySupine = CalculateGravitySupine(actor);
     if (IsBreast2)
-      newLocalPos += obj->m_parent->m_localTransform.rot * varGravitySupine; //XXX: Breast2 만 이상하게 동작( 아래처럼 하면 x linear 와 y linear가 뒤바뀜).
+      newLocalPos += obj->m_parent->m_localTransform.rot * varGravitySupine; //XXX: Breast2 works differently( x-linear  y-linear swapped).
     else
       newLocalPos += chestObj->m_localTransform.rot * varGravitySupine;
 
