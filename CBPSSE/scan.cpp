@@ -293,7 +293,7 @@ void UpdateActors()
         }
     }
 
-    concurrency::parallel_for_each(actorEntries.begin(), actorEntries.end(), [&](const auto& a)
+    for_each(actorEntries.begin(), actorEntries.end(), [&](const auto& a)
         {
             auto actorsIterator = actors.find(a.id);
             if (actorsIterator == actors.end())

@@ -297,7 +297,7 @@ config_t actorUtils::BuildConfigForActor(Actor* actor, UInt64 hashKey)
                     if (overrideConfig[val.first].empty())
                     {
                         // This is ok because we're doing this to a premade copy sequentially
-                        baseConfig.unsafe_erase(val.first);
+                        baseConfig.erase(val.first);
                     }
                     else
                     {
@@ -357,7 +357,7 @@ config_t actorUtils::BuildConfigForActor(Actor* actor, UInt64 hashKey)
                             if (orData.config[val.first].empty())
                             {
                                 // This is ok because we're doing this to a premade copy sequentially
-                                baseConfig.unsafe_erase(val.first);
+                                baseConfig.erase(val.first);
                             }
                             else
                             {
@@ -387,7 +387,7 @@ config_t actorUtils::BuildConfigForActor(Actor* actor, UInt64 hashKey)
                             if (orData.config[val.first].empty())
                             {
                                 // This is ok because we're doing this to a premade copy sequentially
-                                baseConfig.unsafe_erase(val.first);
+                                baseConfig.erase(val.first);
                             }
                             else
                             {

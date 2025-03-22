@@ -165,7 +165,7 @@ NiPoint3 Thing::CalculateGravitySupine(Actor* actor)
       {
         if (rolled > 0.05) // 3 in degree
         {
-          varGravitySupine.x = varGravitySupine.x * (0.5f - rolled);
+          varGravitySupine.x = varGravitySupine.x * ( - rolled);
         }
       }
     }
@@ -175,13 +175,13 @@ NiPoint3 Thing::CalculateGravitySupine(Actor* actor)
       {
         if (rolled > 0.05)
         {
-          varGravitySupine.x = varGravitySupine.x * (0.5f - rolled);
+          varGravitySupine.x = varGravitySupine.x * ( - rolled);
         }
       }
     }
 #endif
 
-#if 1
+#if 0
     if (actor->formID == logActor && gravitySupineZ)
     {
       logger.Error("%12s: Z=%8.4f, FD=%d, HU=%d, standing=%2.4f, sZ=%2.4f, sX=%2.4f, sY=%2.4f, sDist=%2.4f, sSIN=%2.4f, %s, %s, chDist=%2.4f, chSIN=%2.4f \n",
@@ -352,6 +352,10 @@ void Thing::UpdateConfig(configEntry_t& centry)
     gravitySupineX = centry["gravitySupineX"];
     gravitySupineY = centry["gravitySupineY"];
     gravitySupineZ = centry["gravitySupineZ"];
+
+    gravitySupineRotationalX = centry["gravitySupineRotationalX"];
+    gravitySupineRotationalY = centry["gravitySupineRotationalY"];
+    gravitySupineRotationalZ = centry["gravitySupineRotationalZ"];
 }
 
 static float clamp(float val, float min, float max)
@@ -651,19 +655,25 @@ void Thing::UpdateThing(Actor* actor)
 
     // Apply gravitySupine
     auto varGravitySupine = CalculateGravitySupine(actor);
+    NiPoint3 supineDiff(0, 0, 0);
     if (IsBreast2)
-      newLocalPos += obj->m_parent->m_localTransform.rot * varGravitySupine; //XXX: Breast2 works differently( x-linear  y-linear swapped).
+      supineDiff = obj->m_parent->m_localTransform.rot * varGravitySupine; //XXX: Breast2 works differently( x-linear  y-linear swapped).
     else
-      newLocalPos += chestObj->m_localTransform.rot * varGravitySupine;
+      supineDiff = chestObj->m_localTransform.rot * varGravitySupine;
+
+    newLocalPos += supineDiff;
 
     // Apply gravityCorrection, which will always point downward
     newLocalPos += rotateLinear * obj->m_parent->m_worldTransform.rot * skeletonObj->m_localTransform.rot.Transpose() * NiPoint3(0, 0, gravityCorrection * linearZ);
 
     // Apply gravityReal, which will always point downward, downward means groundward
+    NiPoint3 gravityDiff(0, 0, 0);
     if (IsBreastBone)
     {
-      newLocalPos += obj->m_parent->m_worldTransform.rot * NiPoint3(0, 0, gravityReal * -1);
+      gravityDiff = obj->m_parent->m_worldTransform.rot * NiPoint3(0, 0, gravityReal * -1);
     }
+
+    newLocalPos += gravityDiff;
 
     //if (ContainsNoCase(std::string(boneName.c_str()), "Breast_CBP_R_02") ||
     //    ContainsNoCase(std::string(boneName.c_str()), "Breast_CBP_L_02")
@@ -697,13 +707,6 @@ void Thing::UpdateThing(Actor* actor)
 
     obj->m_localTransform.pos = newLocalPos;
     
-    // Apply gravityRealRot
-    NiPoint3 realGravityRot(0, 0, 0);
-    if (IsBreastBone)
-    {
-      realGravityRot = obj->m_worldTransform.rot * NiPoint3(0, 0, gravityReal * -1);
-    }
-
     // Calculate rotational motion
     if (absRotX) rotDiff.x = fabs(rotDiff.x);
 
@@ -712,9 +715,13 @@ void Thing::UpdateThing(Actor* actor)
     rotDiff.y *= rotationalY;
     rotDiff.z *= rotationalZ;
 
-    realGravityRot.x *= rotationalX;
-    realGravityRot.y *= rotationalY;
-    realGravityRot.z *= rotationalZ;
+    supineDiff.x *= gravitySupineRotationalX; 
+    supineDiff.y *= gravitySupineRotationalY; 
+    supineDiff.z *= gravitySupineRotationalZ; 
+
+    gravityDiff.x *= rotationalX;
+    gravityDiff.y *= rotationalY;
+    gravityDiff.z *= rotationalZ;
 
 #if DEBUG
     logger.Error("localTransform.pos after: ");
@@ -734,7 +741,8 @@ void Thing::UpdateThing(Actor* actor)
     NiMatrix43 standardRot;
 
     rotDiff = rotateRotation * rotDiff;
-    rotDiff += rotateRotation * realGravityRot;
+    rotDiff += rotateRotation * supineDiff;
+    rotDiff += rotateRotation * gravityDiff;
     standardRot.SetEulerAngles(rotDiff.x, rotDiff.y, rotDiff.z);
     // Calculate the new local rot as an offset from the original local rot
     obj->m_localTransform.rot = standardRot * origLocalRot[boneName.c_str()][actor->formID];

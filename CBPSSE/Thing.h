@@ -108,6 +108,10 @@ public:
     float gravitySupineY = 0.0f;
     float gravitySupineZ = 0.0f;
 
+    float gravitySupineRotationalX = 0.0f;
+    float gravitySupineRotationalY = 0.0f;
+    float gravitySupineRotationalZ = 0.0f;
+
     static pos_map origLocalPos;
     static rot_map origLocalRot;
     static rot_map origChestWorldRot;
