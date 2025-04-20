@@ -163,7 +163,7 @@ NiPoint3 Thing::CalculateGravitySupine(Actor* actor)
       // right is up
       if (rightSide == 1)
       {
-        if (rolled > 0.05) // 3 in degree
+        if (rolled > 0.0) // 3 in degree
         {
           varGravitySupine.x = varGravitySupine.x * ( - rolled);
         }
@@ -173,7 +173,7 @@ NiPoint3 Thing::CalculateGravitySupine(Actor* actor)
       // left is up
       if (rightSide == 0)
       {
-        if (rolled > 0.05)
+        if (rolled > 0.0)
         {
           varGravitySupine.x = varGravitySupine.x * ( - rolled);
         }
@@ -228,12 +228,17 @@ void Thing::StoreOriginalTransforms(Actor* actor)
             }
             else
             {
+              try {
                 auto actorRotMap = origChestWorldRot.at(boneName.c_str());
                 auto actor_iter = actorRotMap.find(actor->formID);
                 if (actor_iter == actorRotMap.end())
                 {
-                    origChestWorldRot[boneName.c_str()][actor->formID] = chestObj->m_parent->m_worldTransform.rot * chestObj->m_localTransform.rot;
+                  origChestWorldRot[boneName.c_str()][actor->formID] = chestObj->m_parent->m_worldTransform.rot * chestObj->m_localTransform.rot;
                 }
+              }
+              catch (std::exception& e) {
+
+              }
             }
         }
     }
