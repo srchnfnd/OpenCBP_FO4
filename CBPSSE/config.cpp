@@ -31,11 +31,11 @@ bool useWhitelist = false;
 unsigned long logActor = 0;
 
 config_t config;
-std::unordered_map<UInt32, armorOverrideData> configArmorOverrideMap;
-std::unordered_map<UInt32, actorOverrideData> configActorOverrideMap;
+concurrency::concurrent_unordered_map<UInt32, armorOverrideData> configArmorOverrideMap;
+concurrency::concurrent_unordered_map<UInt32, actorOverrideData> configActorOverrideMap;
 std::unordered_map<std::string, UInt32> priorityNameMappings;
-std::unordered_set<UInt32> usedSlots;
-std::unordered_map<UInt64, config_t> cachedConfigs;
+concurrency::concurrent_unordered_set<UInt32> usedSlots;
+concurrency::concurrent_unordered_map<UInt64, config_t> cachedConfigs;
 std::set<UInt32> priorities;
 
 // TODO data structure these

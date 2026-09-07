@@ -4,12 +4,11 @@
 #include <f4se/GameReferences.h>
 #include <time.h>
 #include "config.h"
-//#include <shared_mutex>
-#include <algorithm>
+#include <shared_mutex>
 //using std::shared_mutex;
 
-typedef std::unordered_map<const char*, std::unordered_map<UInt32, NiPoint3>> pos_map;
-typedef std::unordered_map<const char*, std::unordered_map<UInt32, NiMatrix43>> rot_map;
+typedef concurrency::concurrent_unordered_map<const char*, concurrency::concurrent_unordered_map<UInt32, NiPoint3>> pos_map;
+typedef concurrency::concurrent_unordered_map<const char*, concurrency::concurrent_unordered_map<UInt32, NiMatrix43>> rot_map;
 
 inline void RefreshNode(NiAVObject* node)
 {

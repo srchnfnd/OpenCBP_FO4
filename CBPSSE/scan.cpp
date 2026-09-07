@@ -25,8 +25,8 @@
 
 #include <unordered_set>
 
-//#include <concurrent_unordered_map.h>
-//#include <concurrent_vector.h>
+#include <concurrent_unordered_map.h>
+#include <concurrent_vector.h>
 #include <ppl.h>
 
 #include "ActorEntry.h"
@@ -187,7 +187,7 @@ void UpdateActors()
 
     // We scan the cell and build the list every time - only look up things by ID once
     // we retain all state by actor ID, in a map - it's cleared on cell change
-    std::vector<ActorEntry> actorEntries;
+    concurrency::concurrent_vector<ActorEntry> actorEntries;
 
     //logger.error("scan Cell\n");
     auto player = DYNAMIC_CAST(LookupFormByID(0x14), TESForm, Actor);
@@ -324,7 +324,7 @@ void UpdateActors()
         }
     }
 
-    for_each(actorEntries.begin(), actorEntries.end(), [&](const auto& a)
+    concurrency::parallel_for_each(actorEntries.begin(), actorEntries.end(), [&](const auto& a)
         {
             auto actorsIterator = actors.find(a.id);
             if (actorsIterator == actors.end())

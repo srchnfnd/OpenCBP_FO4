@@ -19,7 +19,7 @@ public:
         Unassigned
     };
 
-    std::unordered_map<std::string, Thing> things;
+    concurrency::concurrent_unordered_map<std::string, Thing> things;
     SimObj(Actor* actor);
     SimObj() {}
     ~SimObj();
