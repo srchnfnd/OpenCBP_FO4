@@ -53,6 +53,8 @@ class Thing
     NiAVObject* shoulderL;
     NiAVObject* shoulderR;
 
+    void RefreshBodyReferences(Actor* actor);
+
 
 public:
     bool isEnabled;

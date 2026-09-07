@@ -139,6 +139,28 @@ inline void safe_delete(T*& in)
 concurrency::concurrent_unordered_map<UInt32, SimObj> actors;  // Map of Actor (stored as form ID) to its Simulation Object
 TESObjectCELL* curCell = nullptr;
 
+// Set by the F4SE message listener thread (see main.cpp); consumed at the top of
+// UpdateActors on this module's own thread. We must NOT touch `actors`/`curCell`
+// from the listener thread: ProcessEventQueue runs on a game serving thread, so a
+// direct clear() there can race with an in-progress UpdateActors iteration and
+// free SimObj/Thing nodes while they're being dereferenced (AV at the
+// `t.second.isEnabled` access).
+std::atomic<bool> resetActorsRequested(false);
+
+void RequestActorsReset()
+{
+    resetActorsRequested.store(true, std::memory_order_release);
+}
+
+// Clears all tracked simulator state so SimObjs/Things re-bind with fresh node
+// pointers after the game tears down and rebuilds actor skeletons
+// (save reload / new game). Must only run on the thread that owns `actors`.
+void ResetActorsOnLoad()
+{
+    actors.clear();
+    curCell = nullptr;
+}
+
 
 void UpdateActors()
 {
@@ -153,6 +175,15 @@ void UpdateActors()
     QueryPerformanceFrequency(&frequency);
     QueryPerformanceCounter(&startingTime);
 #endif
+
+    // A save load / new game was requested from the messaging listener thread.
+    // Rebuild sim state on this (owning) thread so we never clear `actors` while
+    // the map is being iterated elsewhere.
+    if (resetActorsRequested.exchange(false, std::memory_order_acq_rel))
+    {
+        actors.clear();
+        curCell = nullptr;
+    }
 
     // We scan the cell and build the list every time - only look up things by ID once
     // we retain all state by actor ID, in a map - it's cleared on cell change

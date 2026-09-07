@@ -3,10 +3,14 @@
 #include "log.h"
 #include "f4se\NiNodes.h"
 #include <time.h>
+#include <cmath>
 
 constexpr float DEG_TO_RAD = 3.14159265 / 180;
 const char* skeletonNif_boneName = "skeleton.nif";
 const float DIFF_LIMIT = 100.0;
+const float MAX_GRAVITY_OFFSET = 100.0;
+
+static float clamp(float val, float min, float max);
 
 // TODO Make these logger macros
 //#define DEBUG 1
@@ -101,6 +105,60 @@ Thing::~Thing()
 {
 }
 
+void Thing::RefreshBodyReferences(Actor* actor)
+{
+    auto loadedState = actor ? actor->unkF0 : nullptr;
+    auto rootNode = loadedState ? loadedState->rootNode : nullptr;
+    if (!rootNode)
+        return;
+
+    // The skeleton can be torn down and rebuilt (save reload, equipping
+    // armor/body that changes the node tree), which invalidates node pointers.
+    // Re-resolve them against the current root so we never dereference freed nodes.
+    BSFixedString chest_str("Chest");
+    BSFixedString head_str("HEAD");
+    BSFixedString shoulderL_str("LArm_ShoulderFat_skin");
+    BSFixedString shoulderR_str("RArm_ShoulderFat_skin");
+
+    auto newChest = rootNode->GetObjectByName(&chest_str);
+    auto newHead = rootNode->GetObjectByName(&head_str);
+    auto newShoulderL = rootNode->GetObjectByName(&shoulderL_str);
+    auto newShoulderR = rootNode->GetObjectByName(&shoulderR_str);
+
+    if (newChest) chestObj = newChest;
+    if (newHead) headObj = newHead;
+    if (newShoulderL) shoulderL = newShoulderL;
+    if (newShoulderR) shoulderR = newShoulderR;
+
+    // Recompute reference distances. Keep them finite: a 0/NaN distance would
+    // poison the supine math below (division by ~0 -> inf -> NaN transforms).
+    if (shoulderL && shoulderR)
+    {
+        shoulderDist = sqrt(pow(shoulderL->m_worldTransform.pos.x - shoulderR->m_worldTransform.pos.x, 2) +
+            pow(shoulderL->m_worldTransform.pos.y - shoulderR->m_worldTransform.pos.y, 2) +
+            pow(shoulderL->m_worldTransform.pos.z - shoulderR->m_worldTransform.pos.z, 2));
+        if (!std::isfinite(shoulderDist) || shoulderDist <= 0.0f)
+            shoulderDist = 1.0f;
+    }
+    else
+    {
+        shoulderDist = 1.0f;
+    }
+
+    if (chestObj && headObj)
+    {
+        chestHeadDist = sqrt(pow(chestObj->m_worldTransform.pos.x - headObj->m_worldTransform.pos.x, 2) +
+            pow(chestObj->m_worldTransform.pos.y - headObj->m_worldTransform.pos.y, 2) +
+            pow(chestObj->m_worldTransform.pos.z - headObj->m_worldTransform.pos.z, 2));
+        if (!std::isfinite(chestHeadDist) || chestHeadDist <= 0.0f)
+            chestHeadDist = 1.0f;
+    }
+    else
+    {
+        chestHeadDist = 1.0f;
+    }
+}
+
 NiPoint3 Thing::CalculateGravitySupine(Actor* actor)
 {
   NiPoint3 varGravitySupine = NiPoint3(0.0, 0.0, 0.0);
@@ -118,7 +176,9 @@ NiPoint3 Thing::CalculateGravitySupine(Actor* actor)
   NiAVObject* breastGravityReferenceBone = chestObj;
 
   //thing_ReadNode_lock.unlock();
-  if (breastGravityReferenceBone != nullptr)
+  if (breastGravityReferenceBone != nullptr &&
+      shoulderL != nullptr && shoulderR != nullptr &&
+      headObj != nullptr && chestObj != nullptr)
   {
     //auto breastRot = breastGravityReferenceBone->m_worldTransform.rot;
     //Get the orientation (here the Z element of the rotation matrix (approx 1.0 when standing up, approx -1.0 when upside down))
@@ -126,6 +186,9 @@ NiPoint3 Thing::CalculateGravitySupine(Actor* actor)
     // chestOrientation: looks like cosine value in pre-NG?. hard to differentiate character is hanged upside down or standing normal. AND when character is lying left or right, this value gets no sense.
     // BUT useful for determining forward facedown/backward faceup lying
     auto chestOrientation = breastGravityReferenceBone->m_worldTransform.rot.data[1][2];
+    if (!std::isfinite(chestOrientation))
+      chestOrientation = 0.0f;
+
     auto& shulderLpos = shoulderL->m_worldTransform.pos;
     auto& shulderRpos = shoulderR->m_worldTransform.pos;
 
@@ -133,10 +196,20 @@ NiPoint3 Thing::CalculateGravitySupine(Actor* actor)
     auto& chestPos = chestObj->m_worldTransform.pos;
     auto chestHeadHeightDiff = headPos.z - chestPos.z;
     auto standing = chestHeadHeightDiff / chestHeadDist; // 1: standing straight, 0: supine, -1: hanged upside down
+    // Orientation ratios are only meaningful in [-1, 1]. Clamping avoids
+    // division-by-almost-zero blowup (e.g. skeleton mid-rebuild right after a load)
+    // turning the result into inf/NaN and stretching a breast to the horizon.
+    if (!std::isfinite(standing))
+      standing = 0.0f;
+    if (standing > 1.0f) standing = 1.0f;
+    if (standing < -1.0f) standing = -1.0f;
 
     // TODO: at times inverted result...
     auto shoulderHeightDiff = shulderRpos.z - shulderLpos.z;
     auto rolled = (fabs(shoulderHeightDiff) / shoulderDist);
+    if (!std::isfinite(rolled))
+      rolled = 0.0f;
+    if (rolled > 1.0f) rolled = 1.0f;
 
     {
       // visualize in https://www.geogebra.org/graphing?lang=en
@@ -148,6 +221,7 @@ NiPoint3 Thing::CalculateGravitySupine(Actor* actor)
       {
         // FACE DOWN
         varGravitySupine.x = 0;
+        varGravitySupine.y = INCR_DECR_X(gravitySupineY, standing);
       }
       else
       {
@@ -203,6 +277,18 @@ NiPoint3 Thing::CalculateGravitySupine(Actor* actor)
     }
 #endif
   }
+
+  // Final safety net: never let the supine offset blow up into a huge/NaN value.
+  if (!std::isfinite(varGravitySupine.x) || !std::isfinite(varGravitySupine.y) || !std::isfinite(varGravitySupine.z))
+  {
+    varGravitySupine = NiPoint3(0.0, 0.0, 0.0);
+  }
+  else
+  {
+    varGravitySupine.x = clamp(varGravitySupine.x, -MAX_GRAVITY_OFFSET, MAX_GRAVITY_OFFSET);
+    varGravitySupine.y = clamp(varGravitySupine.y, -MAX_GRAVITY_OFFSET, MAX_GRAVITY_OFFSET);
+    varGravitySupine.z = clamp(varGravitySupine.z, -MAX_GRAVITY_OFFSET, MAX_GRAVITY_OFFSET);
+  }
   return varGravitySupine;
 }
 
@@ -228,7 +314,7 @@ void Thing::StoreOriginalTransforms(Actor* actor)
             }
             else
             {
-              try {
+              try { // Defensive: re-check the per-actor entry inside origChestWorldRot in case it is missing.
                 auto actorRotMap = origChestWorldRot.at(boneName.c_str());
                 auto actor_iter = actorRotMap.find(actor->formID);
                 if (actor_iter == actorRotMap.end())
@@ -442,6 +528,8 @@ void Thing::UpdateThing(Actor* actor)
     {
         return;
     }
+
+    RefreshBodyReferences(actor);
 
     auto newTime = clock();
     auto deltaT = newTime - time;
@@ -663,8 +751,12 @@ void Thing::UpdateThing(Actor* actor)
     NiPoint3 supineDiff(0, 0, 0);
     if (IsBreast2)
       supineDiff = obj->m_parent->m_localTransform.rot * varGravitySupine; //XXX: Breast2 works differently( x-linear  y-linear swapped).
-    else
+    else if (chestObj)
       supineDiff = chestObj->m_localTransform.rot * varGravitySupine;
+
+    supineDiff.x = clamp(supineDiff.x, -MAX_GRAVITY_OFFSET, MAX_GRAVITY_OFFSET);
+    supineDiff.y = clamp(supineDiff.y, -MAX_GRAVITY_OFFSET, MAX_GRAVITY_OFFSET);
+    supineDiff.z = clamp(supineDiff.z, -MAX_GRAVITY_OFFSET, MAX_GRAVITY_OFFSET);
 
     newLocalPos += supineDiff;
 
@@ -709,6 +801,25 @@ void Thing::UpdateThing(Actor* actor)
     ShowPos(rotDiff);
 
 #endif
+
+    // Safety net: if anything produced a non-finite transform (freed/rebuilt
+    // skeleton mid-update, armor/body swap, degenerate animation), restore the
+    // original local transform instead of writing NaN/inf into the node, which
+    // is what makes the body invisible or stretches a breast to the horizon.
+    if (!std::isfinite(newLocalPos.x) || !std::isfinite(newLocalPos.y) || !std::isfinite(newLocalPos.z) ||
+        !std::isfinite(supineDiff.x) || !std::isfinite(supineDiff.y) || !std::isfinite(supineDiff.z) ||
+        !std::isfinite(gravityDiff.x) || !std::isfinite(gravityDiff.y) || !std::isfinite(gravityDiff.z) ||
+        !std::isfinite(rotDiff.x) || !std::isfinite(rotDiff.y) || !std::isfinite(rotDiff.z))
+    {
+        logger.Error("%s: bone %s non-finite transform reset for actor %08x\n", __func__, boneName.c_str(), actor->formID);
+        obj->m_localTransform.pos = origLocalPos[boneName.c_str()][actor->formID];
+        obj->m_localTransform.rot = origLocalRot[boneName.c_str()][actor->formID];
+        oldWorldPos = origWorldPos;
+        oldWorldPosRot = origWorldPos;
+        velocity = NiPoint3(0, 0, 0);
+        time = clock();
+        return;
+    }
 
     obj->m_localTransform.pos = newLocalPos;
     

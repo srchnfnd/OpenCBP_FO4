@@ -24,7 +24,11 @@ F4SEPapyrusInterface* g_papyrus = nullptr;
 
 void DoHook();
 
-
+// Requests the simulation state be rebuilt after the game rebuilds actor
+// skeletons (save load / new game). Only flags a request; the actual clear
+// happens on the sim thread inside UpdateActors (see scan.cpp), because the
+// messaging listener can run on a different thread than ProcessEventQueue.
+void RequestActorsReset();
 
 void MessageHandler(F4SEMessagingInterface::Message* msg)
 {
@@ -44,11 +48,13 @@ void MessageHandler(F4SEMessagingInterface::Message* msg)
     case F4SEMessagingInterface::kMessage_GameLoaded:
     {
         logger.Info("kMessage_GameLoaded\n");
+        RequestActorsReset();
     }
     break;
     case F4SEMessagingInterface::kMessage_NewGame:
     {
         logger.Info("kMessage_NewGame\n");
+        RequestActorsReset();
     }
     break;
     case F4SEMessagingInterface::kMessage_PreLoadGame:
@@ -69,6 +75,7 @@ void MessageHandler(F4SEMessagingInterface::Message* msg)
     case F4SEMessagingInterface::kMessage_PostLoadGame:
     {
         logger.Info("kMessage_PostLoadGame\n");
+        RequestActorsReset();
     }
     break;
     case F4SEMessagingInterface::kMessage_PreSaveGame:
